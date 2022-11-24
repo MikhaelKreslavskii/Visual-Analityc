@@ -2,12 +2,20 @@ import streamlit as st
 import pandas as pd
 import pickle
 import xgboost as xgb
+import shap
+from draw import st_shap
+
 def enter_new_data(data):
+    
     d={}
+    st.header("Add new Patient")
     for col in data.columns:
         d[col]=0
-    id= st.number_input("Enter id of new patient",format="%d",step=1)
-    d["Unnamed: 0"]=id
+    id= st.number_input("Enter id of new patient",format="%d",step=1) 
+    if not(data[data['ID']==id].empty):
+        st.write("This ID has already exist")
+    else:
+        d["ID"]=id
     bmi = st.number_input("Enter bmi")
     d["BMI"]=bmi
     
@@ -25,7 +33,7 @@ def enter_new_data(data):
     
     alcohol_units_week = st.number_input("Enter alcohol units week")
     d["ALCOHOL_UNITS_WEEK"]=alcohol_units_week
-    data=data.drop(columns=['ICU'])
+    data_copy=data.drop(columns=['ICU'])
     #print(data.drop(columns=["ICU"],inplace=True))
     print(data.shape)
     alcoholcom = st.number_input("Enter alcoholcom")
@@ -82,7 +90,7 @@ def enter_new_data(data):
     for col in data.columns:
         if col in multisel:
             d[col]=1
-    st.write(data.head(1))
+   # st.write(data.head(1))
         
     CANCERHI_A_0 = int(st.checkbox("CANCERHI_A_0 "))
     d["CANCERHI_A_0"]=CANCERHI_A_0
@@ -112,38 +120,55 @@ def enter_new_data(data):
     d["CANCERHI_A_Rectal Cancer"]=CANCERHI_A_Rectal_Cancer
     CANCERHI_A_Thyroid_Cancer = int(st.checkbox("CANCERHI_A_Thyroid_Cancer"))
     d["CANCERHI_A_Thyroid Cancer"]=CANCERHI_A_Thyroid_Cancer
+    #d["ICU"]=0
     print(len(d))
     #st.write(data.head(10))
-    if st.button("Add patient and predict"):
+    if st.button("Add patient"):
         filename="my_model2.pkl"
         model = pickle.load(open(filename,'rb'))
        
         #data.loc[len(data.index)]=list(map(lambda x: 0, data.columns))
         #st.write(data[-1])
-        data=data.append(d,ignore_index=True)
-        st.write(data.tail(1))
+        data_copy=data.append(d,ignore_index=True)
+        #st.write(data.copy.shape())
+        #data_copy.to_csv("stage_1_balanced.csv")
+        #st.write(data.tail(1))
         
-        #st.write(data[data['Unnamed: 0']==id])
-        data_new = data[data['Unnamed: 0']==id]
-        data_new.drop(columns=['Unnamed: 0', 'ICU'],inplace=True)
+        #st.write(data[data['ID']==id])
+        data_new = data_copy[data_copy['ID']==id]
+        data_new.drop(columns=['ID', 'ICU'],inplace=True)
+        k = data_copy.index[data_copy['ID']==id].tolist()
+        k=k[0]
         
         
-        print("1")
         filename= "my_model2.pkl"
         model = pickle.load(open(filename,'rb'))
-        print("2")        
-        
+                
+        #st.write(data_new.head(10))
+        X_test=data_copy.drop(columns=['ID','ICU'])
         ICU = model.predict(data_new)
-        
-        print("3")
+        explainer = shap.Explainer(model)
+        shap_values=explainer(X_test)
+        print("K add: ",k)
+        st.write("Patient added")
+        #st.write(data_copy.tail(1))
         st.write(f"My prediction is {ICU}")
-        data[data["Unnamed: 0"]==id]['ICU']=ICU
-        data.to_csv("/stage_1_balanced.csv",sep=";")
+        st.write('---')
+        st.write("SHAP Value")
+        st_shap(shap.plots.waterfall(shap_values[k]),400)
+        st_shap(shap.plots.force(shap_values[k],link="logit"),400)
+        st_shap(shap.plots.force(shap_values[k]),400)
+        expected=explainer.expected_value
+        st_shap(shap.decision_plot(expected,shap_values[k].values,X_test),400)
         
-        #for opt in multisel:
-            #data.loc[len(data.index),[opt]]=1
+        
+        data_copy.loc[data_copy["ID"]==id,'ICU']=ICU
+        st.write(data_copy.tail(1))
+        data=data_copy
+        
         
     return data
+    #return data
         
     
      
